@@ -25,7 +25,7 @@ function WelcomeIntro() {
     <div className="relative h-screen w-screen overflow-hidden bg-black text-white">
       <video
         className="absolute inset-0 size-full object-cover"
-        src="/landing.mp4"
+        src="/AGRONAUTS/landing.mp4"
         autoPlay
         muted
         loop
