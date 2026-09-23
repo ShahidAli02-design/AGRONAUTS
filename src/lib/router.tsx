@@ -15,7 +15,10 @@ interface RouterContextType {
   path: string;
   params: Record<string, string>;
   navigate: (target: string | NavigateOptions) => void;
-  setHeadMeta: (meta: { title?: string; description?: string }) => void;
+  setHeadMeta: (meta: {
+    title?: string;
+    description?: string;
+  }) => void;
 }
 
 const RouterContext = React.createContext<RouterContextType | null>(null);
@@ -79,7 +82,7 @@ export function resolvePath(
 ): string {
   let resolved = typeof to === "string" ? to : "/";
 
-  if (params && typeof resolved === "string") {
+  if (params) {
     for (const [key, value] of Object.entries(params)) {
       const val =
         value !== undefined && value !== null
@@ -239,4 +242,13 @@ export function matchRoute(
     .split("/")
     .filter(Boolean);
 
-  if (patternParts.length !== pathParts
+  if (patternParts.length !== pathParts.length) {
+    return {
+      matches: false,
+      params: {},
+    };
+  }
+
+  const params: Record<string, string> = {};
+
+  for (let i = 0; i < patternParts.length; i++) {
