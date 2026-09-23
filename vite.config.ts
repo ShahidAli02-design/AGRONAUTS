@@ -5,8 +5,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    // GitHub Pages base path
-    base: '/AGRONAUTS/',
+    // GitHub Pages serves the site under /AGRONAUTS/; a Node host (Render)
+    // serves it at the root — its build sets VITE_BASE=/.
+    base: process.env.VITE_BASE || '/AGRONAUTS/',
 
     // Plugins
     plugins: [

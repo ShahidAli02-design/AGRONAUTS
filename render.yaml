@@ -1,0 +1,22 @@
+# One-click backend for AGRONAUTS on Render (https://render.com):
+# Dashboard -> New -> Blueprint -> pick this repo. It runs the Node server
+# (API, shared database, AI grading, OCR, mandi prices) and also serves the
+# full website at the service URL.
+services:
+  - type: web
+    name: agronauts
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci && VITE_BASE=/ npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATA_GOV_API_KEY
+        sync: false

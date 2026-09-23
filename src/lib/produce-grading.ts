@@ -1,3 +1,4 @@
+import { serverUrl } from "@/lib/api-base";
 // On-device visual measurements of a produce photo. These are sent with every
 // grading request: the server uses them to cross-check Gemini's answer and as
 // the basis of the grade when the AI model is unavailable, so the result
@@ -34,16 +35,16 @@ function getDetectors(): Promise<Detectors | null> {
   if (!detectorsPromise) {
     detectorsPromise = (async () => {
       const { FilesetResolver, ObjectDetector, FaceDetector } = await import("@mediapipe/tasks-vision");
-      const fileset = await FilesetResolver.forVisionTasks(`${window.location.origin}/mediapipe/wasm`);
+      const fileset = await FilesetResolver.forVisionTasks(serverUrl("/mediapipe/wasm"));
       const [objects, faces] = await Promise.all([
         ObjectDetector.createFromOptions(fileset, {
-          baseOptions: { modelAssetPath: "/models/efficientdet_lite0.tflite" },
+          baseOptions: { modelAssetPath: serverUrl("/models/efficientdet_lite0.tflite") },
           runningMode: "IMAGE",
           scoreThreshold: 0.35,
           maxResults: 10,
         }),
         FaceDetector.createFromOptions(fileset, {
-          baseOptions: { modelAssetPath: "/models/blaze_face_short_range.tflite" },
+          baseOptions: { modelAssetPath: serverUrl("/models/blaze_face_short_range.tflite") },
           runningMode: "IMAGE",
           minDetectionConfidence: 0.6,
         }),

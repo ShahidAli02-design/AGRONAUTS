@@ -1,4 +1,5 @@
 import Tesseract from "tesseract.js";
+import { serverUrl } from "@/lib/api-base";
 import { transliterate } from "transliteration";
 
 // Strong markers: any single match is enough to confirm a 7/12 (सात-बारा) extract.
@@ -278,7 +279,7 @@ async function getWorker(): Promise<Tesseract.Worker> {
         progressListener({ status: m.status, progress: m.progress });
       }
     };
-    const origin = window.location.origin;
+    const origin = serverUrl("");
     workerPromise = Tesseract.createWorker(["eng", "mar"], Tesseract.OEM.LSTM_ONLY, {
       workerPath: `${origin}/ocr/worker.min.js`,
       corePath: `${origin}/ocr/core`,

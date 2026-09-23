@@ -21,7 +21,9 @@ import {
 } from '../types';
 import type { LocalProduceMetrics } from '../lib/produce-grading';
 
-const BASE_URL = 'https://agronauts.onrender.com/api';
+// Relative on purpose: installApiFetch() (src/lib/api-base.ts) sends it to the
+// backend when the site is on static hosting such as GitHub Pages.
+const BASE_URL = '/api';
 
 export class ApiService {
   public static isOnline(): boolean {

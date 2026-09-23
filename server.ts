@@ -11,7 +11,8 @@ dotenv.config({ path: ['.env.local', '.env'] });
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // Hosts such as Render / Railway / Cloud Run tell us the port to use.
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Middleware for JSON & extended payloads for base64 leaf & harvest image uploads
   app.use(express.json({ limit: '50mb' }));
@@ -20,7 +21,7 @@ async function startServer() {
   // CORS headers
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
@@ -55,7 +56,10 @@ async function startServer() {
   });
 
   // Vite dev middleware vs Production static serving
-  if (process.env.NODE_ENV !== 'production') {
+  // The built bundle (npm start -> dist/server.cjs) always serves the built
+  // site, even if NODE_ENV wasn't set on the host.
+  const isProduction = process.env.NODE_ENV === 'production' || /server\.cjs$/.test(process.argv[1] || '');
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -64,6 +68,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
+    // Also serve a build made with the GitHub Pages base path (/AGRONAUTS/).
+    app.use('/AGRONAUTS', express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
