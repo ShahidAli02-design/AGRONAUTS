@@ -88,26 +88,58 @@ function readSnapshot(): Snapshot | null {
   }
 }
 
-async function fetchPage(offset: number): Promise<{ records: any[]; total: number }> {
-  const url = `${apiUrl()}?api-key=${encodeURIComponent(apiKey())}&format=json&limit=${pageSize()}&offset=${offset}`;
-  const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
-  if (!res.ok) throw new Error(`data.gov.in responded ${res.status}`);
-  const json: any = await res.json();
-  if (!Array.isArray(json?.records)) throw new Error(json?.message || 'Unexpected response from data.gov.in');
-  return { records: json.records, total: Number(json.total) || json.records.length };
+class RateLimitError extends Error {
+  constructor(public retryAfterMs: number) {
+    super('data.gov.in is rate-limiting requests (HTTP 429)');
+  }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// One page, with a couple of polite retries when data.gov.in says "slow down".
+async function fetchPage(offset: number): Promise<{ records: any[]; total: number }> {
+  const url = `${apiUrl()}?api-key=${encodeURIComponent(apiKey())}&format=json&limit=${pageSize()}&offset=${offset}`;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (res.status === 429 || res.status === 503) {
+      const retryAfter = Number(res.headers.get('retry-after')) * 1000 || 2000 * (attempt + 1);
+      if (attempt < 2) {
+        await sleep(Math.min(retryAfter, 8000));
+        continue;
+      }
+      throw new RateLimitError(Math.max(retryAfter, 60_000));
+    }
+    if (!res.ok) throw new Error(`data.gov.in responded ${res.status}`);
+    const json: any = await res.json();
+    if (!Array.isArray(json?.records)) throw new Error(json?.message || 'Unexpected response from data.gov.in');
+    return { records: json.records, total: Number(json.total) || json.records.length };
+  }
+}
+
+// Pages are fetched one at a time with a short pause; if data.gov.in starts
+// refusing part-way, keep what already loaded instead of failing everything.
 async function loadAll(): Promise<Snapshot> {
   const first = await fetchPage(0);
+  lastError = null;
   const all = [...first.records];
   const pages = Math.min(maxPages(), Math.ceil(first.total / pageSize()));
-  for (let p = 1; p < pages; p += 4) {
-    const batch = await Promise.all(
-      [0, 1, 2, 3].filter((i) => p + i < pages).map((i) => fetchPage((p + i) * pageSize()).catch(() => ({ records: [], total: 0 })))
-    );
-    batch.forEach((b) => all.push(...b.records));
+  let partial = false;
+  for (let p = 1; p < pages; p++) {
+    await sleep(usingSampleKey() ? 1200 : 300);
+    try {
+      all.push(...(await fetchPage(p * pageSize())).records);
+    } catch (err) {
+      partial = true;
+      console.warn(`Mandi prices: stopped after ${p} of ${pages} pages:`, err instanceof Error ? err.message : err);
+      break;
+    }
   }
-  const snap: Snapshot = { records: all.map(normalize).filter((r) => r.commodity && r.market), fetchedAt: new Date().toISOString(), total: first.total };
+  const snap: Snapshot = {
+    records: all.map(normalize).filter((r) => r.commodity && r.market),
+    fetchedAt: new Date().toISOString(),
+    total: first.total,
+  };
+  if (partial) lastError = `Loaded ${snap.records.length} of ${first.total} prices; data.gov.in limited the rest.`;
   try {
     fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
     fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snap));
@@ -117,14 +149,19 @@ async function loadAll(): Promise<Snapshot> {
   return snap;
 }
 
+// After a refusal, wait before asking data.gov.in again so page views don't
+// keep the rate limit tripped.
+let retryNotBefore = 0;
+
 async function getData(): Promise<{ snap: Snapshot | null; stale: boolean }> {
   if (cache && Date.now() - cacheTime < TTL_MS) return { snap: cache, stale: false };
+  const fallback = () => cache || readSnapshot();
+  if (Date.now() < retryNotBefore) return { snap: fallback(), stale: true };
   if (!inflight) {
     inflight = loadAll()
       .then((snap) => {
         cache = snap;
         cacheTime = Date.now();
-        lastError = null;
         return snap;
       })
       .finally(() => {
@@ -134,17 +171,23 @@ async function getData(): Promise<{ snap: Snapshot | null; stale: boolean }> {
   try {
     return { snap: await inflight, stale: false };
   } catch (err: any) {
-    lastError = err?.message || 'Could not reach data.gov.in';
-    const fallback = cache || readSnapshot();
-    if (fallback) {
-      cache = fallback;
-      cacheTime = Date.now();
+    const limited = err instanceof RateLimitError;
+    lastError = limited
+      ? usingSampleKey()
+        ? 'data.gov.in is rate-limiting the shared demo key. Add your own free DATA_GOV_API_KEY on the server.'
+        : 'data.gov.in is rate-limiting requests right now. Retrying automatically in a few minutes.'
+      : err?.message || 'Could not reach data.gov.in';
+    retryNotBefore = Date.now() + (limited ? Math.max(err.retryAfterMs, 5 * 60_000) : 60_000);
+    const snap = fallback();
+    if (snap) {
+      cache = snap;
+      cacheTime = Date.now() - TTL_MS + 5 * 60_000; // try for fresh prices again in ~5 min
     }
     if (Date.now() - lastWarningAt >= TTL_MS) {
       console.warn('Mandi price fetch failed:', lastError);
       lastWarningAt = Date.now();
     }
-    return { snap: fallback, stale: true };
+    return { snap, stale: true };
   }
 }
 
@@ -162,7 +205,7 @@ mandiRouter.get('/mandi/prices', async (req: Request, res: Response) => {
   if (!snap) {
     return res.status(503).json({
       success: false,
-      error: `Live mandi prices are unavailable right now (${lastError ?? 'no connection'}). Check the server's internet access and DATA_GOV_API_KEY.`,
+      error: `Live mandi prices are unavailable right now: ${lastError ?? 'no connection to data.gov.in'}`,
     });
   }
   const { state, district, market, commodity, category, q, sort = 'commodity' } = req.query as Record<string, string>;
