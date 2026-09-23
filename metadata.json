@@ -1,0 +1,11 @@
+{
+  "name": "Remix Agronauts - AI Agriculture Produce Management \u0026 Marketplace",
+  "description": "From Pre-Harvesting to Sale — End-to-End Smart Agriculture Solution with AI crop planning, leaf disease detection, quality grading, zero-waste processing, and marketplace.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
