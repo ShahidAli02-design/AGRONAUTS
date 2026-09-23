@@ -21,7 +21,7 @@ import {
 } from '../types';
 import type { LocalProduceMetrics } from '../lib/produce-grading';
 
-const BASE_URL = '/api';
+const BASE_URL = 'https://agronauts.onrender.com/api';
 
 export class ApiService {
   public static isOnline(): boolean {

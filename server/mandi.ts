@@ -78,6 +78,7 @@ let cache: Snapshot | null = null;
 let cacheTime = 0;
 let inflight: Promise<Snapshot> | null = null;
 let lastError: string | null = null;
+let lastWarningAt = 0;
 
 function readSnapshot(): Snapshot | null {
   try {
@@ -134,8 +135,15 @@ async function getData(): Promise<{ snap: Snapshot | null; stale: boolean }> {
     return { snap: await inflight, stale: false };
   } catch (err: any) {
     lastError = err?.message || 'Could not reach data.gov.in';
-    console.warn('Mandi price fetch failed:', lastError);
     const fallback = cache || readSnapshot();
+    if (fallback) {
+      cache = fallback;
+      cacheTime = Date.now();
+    }
+    if (Date.now() - lastWarningAt >= TTL_MS) {
+      console.warn('Mandi price fetch failed:', lastError);
+      lastWarningAt = Date.now();
+    }
     return { snap: fallback, stale: true };
   }
 }
