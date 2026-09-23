@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AGRONAUTS</title>
+  <script>
+    const path = location.pathname;
+    const base = "/AGRONAUTS/";
+
+    if (path.startsWith(base)) {
+      const route = path.slice(base.length);
+      const query = location.search;
+      const hash = location.hash;
+
+      sessionStorage.setItem(
+        "redirect",
+        "/" + route + query + hash
+      );
+    }
+
+    location.replace(base);
+  </script>
+</head>
+<body>
+  Loading AGRONAUTS...
+</body>
+</html>
