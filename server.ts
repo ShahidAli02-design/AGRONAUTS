@@ -51,6 +51,8 @@ async function startServer() {
     res.json({
       status: 'ok',
       service: 'Agronauts Agriculture Ecosystem API',
+      version: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7),
+      mandiKey: process.env.DATA_GOV_API_KEY ? 'own' : 'demo',
       timestamp: new Date().toISOString()
     });
   });

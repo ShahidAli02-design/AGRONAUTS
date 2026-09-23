@@ -91,7 +91,14 @@ function MandiPage() {
     try {
       const res = await fetch(`/api/mandi/prices?${qs}`);
       const j = await res.json();
-      if (!res.ok || !j?.success) throw new Error(j?.error || "Could not load mandi prices.");
+      if (!res.ok || !j?.success) {
+        const d = j?.diagnostics;
+        throw new Error(
+          `${j?.error || "Could not load mandi prices."}${
+            d ? ` [server ${d.serverVersion} · key: ${d.apiKey}${d.retryInMinutes ? ` · retry in ~${d.retryInMinutes} min` : ""}]` : " [server running old code — redeploy on Render]"
+          }`,
+        );
+      }
       setRows(j.records);
       setMeta(j);
       setError(null);

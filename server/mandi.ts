@@ -12,6 +12,16 @@ import { Router, Request, Response } from 'express';
 
 export const mandiRouter = Router();
 
+// What the server is running with — shown on the page when prices fail so
+// the setup problem (old deploy / demo key) is visible without server logs.
+function mandiDiagnostics() {
+  return {
+    apiKey: usingSampleKey() ? 'demo (shared, heavily rate-limited)' : 'own DATA_GOV_API_KEY',
+    serverVersion: (process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT || 'local').slice(0, 7),
+    retryInMinutes: Math.max(0, Math.ceil((retryNotBefore - Date.now()) / 60000)),
+  };
+}
+
 const SAMPLE_KEY = '579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b';
 // Read lazily: env files are loaded after this module is imported.
 const apiUrl = () => process.env.MANDI_API_URL || 'https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070';
@@ -78,6 +88,9 @@ let cache: Snapshot | null = null;
 let cacheTime = 0;
 let inflight: Promise<Snapshot> | null = null;
 let lastError: string | null = null;
+// After a refusal, wait before asking data.gov.in again so page views don't
+// keep the rate limit tripped.
+let retryNotBefore = 0;
 let lastWarningAt = 0;
 
 function readSnapshot(): Snapshot | null {
@@ -149,9 +162,6 @@ async function loadAll(): Promise<Snapshot> {
   return snap;
 }
 
-// After a refusal, wait before asking data.gov.in again so page views don't
-// keep the rate limit tripped.
-let retryNotBefore = 0;
 
 async function getData(): Promise<{ snap: Snapshot | null; stale: boolean }> {
   if (cache && Date.now() - cacheTime < TTL_MS) return { snap: cache, stale: false };
@@ -206,6 +216,7 @@ mandiRouter.get('/mandi/prices', async (req: Request, res: Response) => {
     return res.status(503).json({
       success: false,
       error: `Live mandi prices are unavailable right now: ${lastError ?? 'no connection to data.gov.in'}`,
+      diagnostics: mandiDiagnostics(),
     });
   }
   const { state, district, market, commodity, category, q, sort = 'commodity' } = req.query as Record<string, string>;
