@@ -31,7 +31,7 @@ function WelcomeIntro() {
         loop
         playsInline
       />
-
+<div className="pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/40 via-transparent to-black/30" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/40" />
 
       <div className="relative z-10 flex h-full flex-col items-center justify-between px-6 py-10 text-center sm:py-14">
