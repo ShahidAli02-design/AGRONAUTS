@@ -20,11 +20,46 @@ interface RouterContextType {
 
 const RouterContext = React.createContext<RouterContextType | null>(null);
 
+const BASE_PATH =
+  typeof import.meta !== "undefined" && import.meta.env?.BASE_URL
+    ? import.meta.env.BASE_URL.replace(/\/+$/, "")
+    : "";
+
+function stripBasePath(pathname: string): string {
+  const path = pathname || "/";
+
+  if (BASE_PATH && path === BASE_PATH) {
+    return "/";
+  }
+
+  if (BASE_PATH && path.startsWith(`${BASE_PATH}/`)) {
+    return path.slice(BASE_PATH.length) || "/";
+  }
+
+  return path;
+}
+
+function addBasePath(path: string): string {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!BASE_PATH) {
+    return cleanPath;
+  }
+
+  if (cleanPath === "/") {
+    return `${BASE_PATH}/`;
+  }
+
+  return `${BASE_PATH}${cleanPath}`;
+}
+
 export function useRouter() {
   const ctx = React.useContext(RouterContext);
+
   if (!ctx) {
     throw new Error("useRouter must be used within a RouterProvider");
   }
+
   return ctx;
 }
 
@@ -38,14 +73,25 @@ export function useParams(): Record<string, string> {
   return params;
 }
 
-export function resolvePath(to?: string, params?: Record<string, any>): string {
+export function resolvePath(
+  to?: string,
+  params?: Record<string, any>
+): string {
   let resolved = typeof to === "string" ? to : "/";
+
   if (params && typeof resolved === "string") {
-    for (const [k, v] of Object.entries(params)) {
-      const val = v !== undefined && v !== null ? encodeURIComponent(String(v)) : "";
-      resolved = resolved.replace(`$${k}`, val).replace(`:${k}`, val);
+    for (const [key, value] of Object.entries(params)) {
+      const val =
+        value !== undefined && value !== null
+          ? encodeURIComponent(String(value))
+          : "";
+
+      resolved = resolved
+        .replace(`$${key}`, val)
+        .replace(`:${key}`, val);
     }
   }
+
   return resolved;
 }
 
@@ -69,26 +115,49 @@ export function Link({
   [key: string]: any;
 }) {
   const { navigate } = useRouter();
+
   const safeTo = to || "/";
-  const href = resolvePath(safeTo, params);
+  const routePath = resolvePath(safeTo, params);
+  const href = addBasePath(routePath);
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (onClick) onClick(e);
-    if (e.defaultPrevented || target === "_blank" || e.metaKey || e.ctrlKey || e.shiftKey) {
+    if (onClick) {
+      onClick(e);
+    }
+
+    if (
+      e.defaultPrevented ||
+      target === "_blank" ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey
+    ) {
       return;
     }
+
     e.preventDefault();
     navigate({ to: safeTo, params });
   };
 
   return (
-    <a href={href} onClick={handleClick} className={className} target={target} rel={rel} {...props}>
+    <a
+      href={href}
+      onClick={handleClick}
+      className={className}
+      target={target}
+      rel={rel}
+      {...props}
+    >
       {children}
     </a>
   );
 }
 
-export function Outlet({ children }: { children?: React.ReactNode }) {
+export function Outlet({
+  children,
+}: {
+  children?: React.ReactNode;
+}) {
   return <>{children}</>;
 }
 
@@ -109,7 +178,13 @@ export function createRootRouteWithContext<T = any>() {
 }
 
 export function createFileRoute(pathPattern: string) {
-  return (options: { head?: (ctx: any) => any; component: React.ComponentType<any>; [key: string]: any }) => {
+  return (
+    options: {
+      head?: (ctx: any) => any;
+      component: React.ComponentType<any>;
+      [key: string]: any;
+    }
+  ) => {
     return {
       pathPattern,
       component: options.component,
@@ -131,162 +206,37 @@ export interface RouteDefinition {
 export function matchRoute(
   pattern?: string,
   pathname?: string
-): { matches: boolean; params: Record<string, string> } {
-  const safePattern = typeof pattern === "string" ? pattern : "/";
-  const safePath = typeof pathname === "string" ? pathname : "/";
-  const normPattern = safePattern.replace(/^\/_authenticated/, "").replace(/\/+$/, "") || "/";
-  const normPath = safePath.replace(/\/+$/, "") || "/";
+): {
+  matches: boolean;
+  params: Record<string, string>;
+} {
+  const safePattern =
+    typeof pattern === "string" ? pattern : "/";
+
+  const safePath =
+    typeof pathname === "string" ? pathname : "/";
+
+  const normPattern =
+    safePattern
+      .replace(/^\/_authenticated/, "")
+      .replace(/\/+$/, "") || "/";
+
+  const normPath =
+    safePath.replace(/\/+$/, "") || "/";
 
   if (normPattern === normPath) {
-    return { matches: true, params: {} };
-  }
-
-  const patternParts = normPattern.split("/").filter(Boolean);
-  const pathParts = normPath.split("/").filter(Boolean);
-
-  if (patternParts.length !== pathParts.length) {
-    return { matches: false, params: {} };
-  }
-
-  const params: Record<string, string> = {};
-
-  for (let i = 0; i < patternParts.length; i++) {
-    const p = patternParts[i];
-    const actual = pathParts[i];
-
-    if (p.startsWith("$") || p.startsWith(":")) {
-      const key = p.slice(1);
-      params[key] = decodeURIComponent(actual);
-    } else if (p !== actual) {
-      return { matches: false, params: {} };
-    }
-  }
-
-  return { matches: true, params };
-}
-
-export function RouterProvider({
-  routes,
-  children,
-}: {
-  routes: RouteDefinition[];
-  children?: React.ReactNode;
-}) {
-  const [state, setState] = React.useState<RouterState>(() => {
-    const initialPath = typeof window !== "undefined" ? window.location.pathname || "/" : "/";
-    return { path: initialPath, params: {} };
-  });
-
-  const navigate = React.useCallback((target: string | NavigateOptions) => {
-    const to = typeof target === "string" ? target : target?.to || "/";
-    const params = typeof target === "string" ? undefined : target?.params;
-    const replace = typeof target === "string" ? false : Boolean(target?.replace);
-
-    const resolved = resolvePath(to, params);
-
-    // Compute matching params immediately
-    let matchedParams: Record<string, string> = params || {};
-    for (const r of routes) {
-      const match = matchRoute(r.pattern, resolved);
-      if (match.matches) {
-        matchedParams = { ...match.params, ...matchedParams };
-        break;
-      }
-    }
-
-    if (typeof window !== "undefined") {
-      if (replace) {
-        window.history.replaceState({}, "", resolved);
-      } else {
-        window.history.pushState({}, "", resolved);
-      }
-    }
-
-    setState({ path: resolved, params: matchedParams });
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [routes]);
-
-  React.useEffect(() => {
-    const handlePopState = () => {
-      const curr = window.location.pathname || "/";
-      let matchedParams: Record<string, string> = {};
-      for (const r of routes) {
-        const match = matchRoute(r.pattern, curr);
-        if (match.matches) {
-          matchedParams = match.params;
-          break;
-        }
-      }
-      setState({ path: curr, params: matchedParams });
+    return {
+      matches: true,
+      params: {},
     };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [routes]);
-
-  const setHeadMeta = React.useCallback((meta: { title?: string; description?: string }) => {
-    if (typeof document !== "undefined") {
-      if (meta.title) document.title = meta.title;
-      if (meta.description) {
-        let tag = document.querySelector('meta[name="description"]');
-        if (!tag) {
-          tag = document.createElement("meta");
-          tag.setAttribute("name", "description");
-          document.head.appendChild(tag);
-        }
-        tag.setAttribute("content", meta.description);
-      }
-    }
-  }, []);
-
-  // Match current route
-  let matchedComponent: React.ComponentType<any> | null = null;
-  let activeRoute: RouteDefinition | null = null;
-  let matchedParams: Record<string, string> = {};
-
-  for (const r of routes) {
-    const m = matchRoute(r.pattern, state.path);
-    if (m.matches) {
-      matchedComponent = r.component;
-      activeRoute = r;
-      matchedParams = m.params;
-      break;
-    }
   }
 
-  // Update head metadata when active route changes
-  React.useEffect(() => {
-    if (activeRoute?.head) {
-      try {
-        const headInfo = activeRoute.head({ params: matchedParams });
-        if (headInfo?.meta) {
-          const titleObj = headInfo.meta.find((m: any) => m.title);
-          const descObj = headInfo.meta.find((m: any) => m.name === "description");
-          if (titleObj?.title) document.title = titleObj.title;
-          if (descObj?.content) {
-            let metaDesc = document.querySelector('meta[name="description"]');
-            if (metaDesc) metaDesc.setAttribute("content", descObj.content);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-  }, [activeRoute, matchedParams]);
+  const patternParts = normPattern
+    .split("/")
+    .filter(Boolean);
 
-  const contextValue = React.useMemo(
-    () => ({
-      path: state.path,
-      params: matchedParams,
-      navigate,
-      setHeadMeta,
-    }),
-    [state.path, matchedParams, navigate, setHeadMeta]
-  );
+  const pathParts = normPath
+    .split("/")
+    .filter(Boolean);
 
-  return (
-    <RouterContext.Provider value={contextValue}>
-      {children ? children : matchedComponent ? React.createElement(matchedComponent) : null}
-    </RouterContext.Provider>
-  );
-}
+  if (patternParts.length !== pathParts
