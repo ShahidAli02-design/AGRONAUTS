@@ -145,8 +145,8 @@ const PREVERIFIED_HARVEST_SAMPLES = [
     crop: "Tomato",
     grade: "Grade B" as const,
     score: 77,
-    imageUrl:
-      "https://images.unsplash.com/photo-1546470427-e26264be0b11?w=600&auto=format&fit=crop&q=80",
+    // Served from public/ so it can't break when an external photo is removed.
+    imageUrl: `${import.meta.env.BASE_URL}samples/tomato-grade-b.jpg`,
     report: {
       id: "qr_sample_tom_b",
       batchId: "LOT-TOM-7702",
