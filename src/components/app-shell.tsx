@@ -60,6 +60,7 @@ export function AppShell({
   const { t, lang } = useI18n();
   const { user, profile, role, signOut } = useSession();
   const navigate = useNavigate();
+  const onAuthPage = useRouter().path === "/auth";
   const [isVoiceOpen, setIsVoiceOpen] = React.useState(false);
   const [serverWaking, setServerWaking] = React.useState(false);
   React.useEffect(() => onServerWaking(setServerWaking), []);
@@ -129,7 +130,7 @@ export function AppShell({
             <span className="text-lg tracking-tight font-black font-[family-name:var(--font-display)]">{t("appName")}</span>
           </Link>
 
-          <nav className="flex items-center gap-1.5 text-sm">
+          <nav className="flex flex-wrap items-center justify-end gap-1.5 text-sm">
             <Button
               variant="outline"
               size="sm"
@@ -205,13 +206,10 @@ export function AppShell({
                   <span className="hidden sm:inline">{t("signOut")}</span>
                 </Button>
               </>
-            ) : (
-              <Link
-                to="/auth"
-                className="rounded-md bg-primary px-3.5 py-1.5 font-semibold text-primary-foreground hover:bg-primary/90 text-xs shadow-xs"
-              >
-                {t("signIn")}
-              </Link>
+            ) : onAuthPage ? null : (
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/auth">{t("signIn")}</Link>
+              </Button>
             )}
 
             <div className="pl-1 border-l border-border ml-1">
@@ -221,70 +219,70 @@ export function AppShell({
         </div>
 
         {/* Secondary Sub-nav for smart agricultural tools (not for processors) */}
-        {role !== "processor" && (
-        <div className="border-t border-border/60 bg-muted/40 px-4 py-1.5">
-          <div className="mx-auto flex w-full max-w-5xl items-center gap-2 overflow-x-auto text-xs no-scrollbar">
-            <span className="font-semibold text-muted-foreground uppercase text-[10px] tracking-wider shrink-0 pr-1">
+        {role !== "processor" && !onAuthPage && (
+        <nav aria-label={lang === "mr" ? "कृषी साधने" : "Smart tools"} className="border-t border-border/60 bg-muted/40 px-4 py-2">
+          <div className="mx-auto flex w-full max-w-5xl items-center gap-3 overflow-x-auto text-xs no-scrollbar">
+            <span className="font-semibold text-muted-foreground uppercase text-xs tracking-wider shrink-0 pr-1">
               {lang === "mr" ? "कृषी साधने" : "Smart Tools"}:
             </span>
             <Link
               to="/disease-doctor"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <Leaf className="size-3 text-primary" />
               <span>{t("cropDoctor")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/quality-detector"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <Award className="size-3 text-emerald-500" />
               <span>{t("qualityDetector")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/soil-health"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <FlaskConical className="size-3 text-amber-500" />
               <span>{t("soilHealth")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/yield-predictor"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <TrendingUp className="size-3 text-blue-500" />
               <span>{t("yieldPredictor")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/cold-storage"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <Snowflake className="size-3 text-cyan-500" />
               <span>{t("coldStorage")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/schemes"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <Award className="size-3 text-purple-500" />
               <span>{t("schemes")}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
             <Link
               to="/history"
-              className="inline-flex items-center gap-1 shrink-0 rounded-full px-2.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+              className="inline-flex items-center gap-1 shrink-0 rounded-full px-3 py-1 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
             >
               <History className="size-3 text-foreground" />
               <span>{lang === "mr" ? "इतिहास" : lang === "hi" ? "इतिहास" : "History"}</span>
-              {!isUserSignedIn && <Lock className="size-2.5 text-muted-foreground/60" />}
+              {!isUserSignedIn && <Lock className="size-3 text-muted-foreground/60" aria-label="Sign in required" />}
             </Link>
           </div>
-        </div>
+        </nav>
         )}
       </header>
 

@@ -20,6 +20,7 @@ import {
 import { GlareHover } from "@/components/GlareHover";
 import { INDIA_STATE_DISTRICTS } from "@/lib/india-districts";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -232,7 +233,7 @@ function AuthPage() {
         >
         <Card className="border-border shadow-sm bg-card overflow-hidden">
           {/* Top Switcher Tabs */}
-          <div className="grid grid-cols-2 border-b border-border bg-muted/40 text-center font-medium text-sm">
+          <div role="tablist" aria-label={lang === "mr" ? "खाते" : "Account"} className="grid grid-cols-2 border-b border-border bg-muted/60 text-center font-medium text-sm">
             <button
               type="button"
               onClick={() => {
@@ -240,13 +241,18 @@ function AuthPage() {
                 setError(null);
                 setInfo(null);
               }}
-              className={`py-3 transition-colors flex items-center justify-center gap-2 ${
+              role="tab"
+              id="auth-tab-in"
+              aria-selected={mode === "in"}
+              aria-controls="auth-panel"
+              className={cn(
+                "flex items-center justify-center gap-2 py-3 transition-colors",
                 mode === "in"
-                  ? "bg-card text-foreground font-semibold border-b-2 border-primary -mb-px"
+                  ? "-mb-px border-x border-t-2 border-border border-t-primary bg-card font-semibold text-foreground first:border-l-0 last:border-r-0"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+              )}
             >
-              <UserCheck className="size-4 text-primary" />
+              <UserCheck className="size-4 text-primary" aria-hidden="true" />
               <span>{t("signIn")}</span>
             </button>
             <button
@@ -256,18 +262,24 @@ function AuthPage() {
                 setError(null);
                 setInfo(null);
               }}
-              className={`py-3 transition-colors flex items-center justify-center gap-2 ${
+              role="tab"
+              id="auth-tab-up"
+              aria-selected={mode === "up"}
+              aria-controls="auth-panel"
+              className={cn(
+                "flex items-center justify-center gap-2 py-3 transition-colors",
                 mode === "up"
-                  ? "bg-card text-foreground font-semibold border-b-2 border-primary -mb-px"
+                  ? "-mb-px border-x border-t-2 border-border border-t-primary bg-card font-semibold text-foreground first:border-l-0 last:border-r-0"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+              )}
             >
-              <User className="size-4 text-primary" />
+              <User className="size-4 text-primary" aria-hidden="true" />
               <span>{t("signUp")}</span>
             </button>
           </div>
 
-          <CardHeader className="pb-4">
+          <div role="tabpanel" id="auth-panel" aria-labelledby={mode === "in" ? "auth-tab-in" : "auth-tab-up"}>
+          <CardHeader className="pb-4 pt-5">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <CardTitle className="text-xl sm:text-2xl font-bold tracking-tight">
@@ -472,7 +484,7 @@ function AuthPage() {
                 </div>
               ) : null}
 
-              <Button type="submit" className="h-12 w-full text-base font-semibold shadow-xs" disabled={busy}>
+              <Button type="submit" size="lg" className="w-full" disabled={busy}>
                 {busy ? t("loading") : mode === "in" ? t("signIn") : (lang === "mr" ? "खाते नोंदवा व डॅशबोर्ड उघडा" : "Register & Open Dashboard")}
               </Button>
             </form>
@@ -480,42 +492,40 @@ function AuthPage() {
             {/* Quick Demo Fill Helper Chips - compact and tidy */}
             {mode === "in" ? (
               <div className="mt-5 pt-4 border-t border-border">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
-                    <Sparkles className="size-3 text-primary" />
-                    <span>{lang === "mr" ? "त्वरित भूमिका लॉगिन (Direct Role Login):" : "Direct Role Login / Quick Test:"}</span>
+                <div className="mb-2">
+                  <p className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                    <Sparkles className="size-3.5 text-primary" aria-hidden="true" />
+                    <span>{lang === "mr" ? "त्वरित भूमिका लॉगिन (Direct Role Login)" : "Direct role login (demo)"}</span>
                   </p>
-                  <span className="text-[10px] text-muted-foreground">१-क्लिक लॉगिन उपलब्ध</span>
+                  <p className="mt-0.5 pl-[18px] text-xs text-muted-foreground">
+                    {lang === "mr" ? "१-क्लिक लॉगिन उपलब्ध" : "Tap a role to sign in with one click"}
+                  </p>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs">
                   {DEFAULT_USERS.map((u) => (
-                    <button
+                    <Button
                       key={u.id}
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleDirectLoginAsDemoUser(u.role)}
-                      className={`px-2 py-1.5 rounded-lg border text-center transition-all flex flex-col items-center justify-center gap-0.5 shadow-2xs hover:border-primary hover:bg-primary/5 ${
-                        email === u.email
-                          ? "border-primary bg-primary/10 text-primary font-semibold"
-                          : "border-border/80 bg-muted/40 text-foreground"
-                      }`}
+                      className={cn(
+                        "h-auto min-w-0 flex-col gap-0.5 whitespace-normal px-2 py-1.5 text-center leading-tight",
+                        email === u.email && "border-primary bg-primary/10 text-primary"
+                      )}
+                      aria-label={`Sign in as demo ${u.role}`}
                       title={`Directly sign in to ${u.role.toUpperCase()} dashboard`}
                     >
-                      <div className="flex items-center gap-1 font-semibold">
-                        <span>
-                          {u.role === "farmer"
-                            ? "🌱"
-                            : u.role === "buyer"
-                            ? "🛒"
-                            : u.role === "processor"
-                            ? "🏭"
-                            : "🏛️"}
+                      <span className="flex items-center justify-center gap-1 font-semibold">
+                        <span aria-hidden="true">
+                          {u.role === "farmer" ? "🌱" : u.role === "buyer" ? "🛒" : u.role === "processor" ? "🏭" : "🏛️"}
                         </span>
                         <span className="capitalize">{t(u.role)}</span>
-                      </div>
-                      <span className="text-[9px] text-muted-foreground font-mono">
-                        {u.role === "farmer" ? "Farmer" : u.role === "buyer" ? "Buyer" : u.role === "processor" ? "Processor" : "Admin"}
                       </span>
-                    </button>
+                      {lang !== "en" ? (
+                        <span className="text-xs font-normal capitalize text-muted-foreground">{u.role}</span>
+                      ) : null}
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -528,9 +538,11 @@ function AuthPage() {
                   ? (lang === "mr" ? "नवीन खाते तयार करायचे आहे का?" : "Don't have an account yet?")
                   : (lang === "mr" ? "आधीच खाते आहे का?" : "Already have an account?")}{" "}
               </span>
-              <button
+              <Button
                 type="button"
-                className="font-semibold text-primary underline underline-offset-4 hover:text-primary/80 transition-colors"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs sm:text-sm underline"
                 onClick={() => {
                   setMode(mode === "in" ? "up" : "in");
                   setError(null);
@@ -538,12 +550,12 @@ function AuthPage() {
                 }}
               >
                 {mode === "in" ? t("signUp") : t("signIn")}
-              </button>
+              </Button>
             </div>
 
             {/* Privacy Guarantee Note */}
-            <div className="mt-4 pt-3 border-t border-border/60 text-center text-[11px] text-muted-foreground flex items-center justify-center gap-1.5">
-              <ShieldCheck className="size-3.5 text-emerald-600" />
+            <div className="mt-4 pt-3 border-t border-border/60 text-center text-xs text-muted-foreground flex items-center justify-center gap-1.5">
+              <ShieldCheck className="size-3.5 shrink-0 text-emerald-600" aria-hidden="true" />
               <span>
                 {lang === "mr"
                   ? "१००% डेटा गोपनीयता: शेतकरी, खरेदीदार आणि प्रक्रियादार यांचा डेटा स्वतंत्र राहतो."
@@ -551,6 +563,7 @@ function AuthPage() {
               </span>
             </div>
           </CardContent>
+          </div>
         </Card>
         </GlareHover>
       </div>
