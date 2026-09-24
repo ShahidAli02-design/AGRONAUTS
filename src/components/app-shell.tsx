@@ -24,6 +24,7 @@ import { useSession } from "@/lib/session";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { VoiceModal } from "./VoiceModal";
+import { onServerWaking } from "@/lib/api-base";
 
 export function LanguageSwitcher() {
   const { lang, setLang } = useI18n();
@@ -60,6 +61,8 @@ export function AppShell({
   const { user, profile, role, signOut } = useSession();
   const navigate = useNavigate();
   const [isVoiceOpen, setIsVoiceOpen] = React.useState(false);
+  const [serverWaking, setServerWaking] = React.useState(false);
+  React.useEffect(() => onServerWaking(setServerWaking), []);
 
   const isUserSignedIn = signedIn !== undefined ? signedIn : Boolean(user);
 
@@ -105,6 +108,16 @@ export function AppShell({
         size={28}
         hoverTrailAmount={5}
       />
+
+      {serverWaking ? (
+        <div role="status" className="sticky top-0 z-40 bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-900">
+          {lang === "mr"
+            ? "सर्व्हर सुरू होत आहे… कृपया 1 मिनिट थांबा."
+            : lang === "hi"
+              ? "सर्वर चालू हो रहा है… कृपया 1 मिनट रुकें।"
+              : "Server is starting up… please wait up to 1 minute."}
+        </div>
+      ) : null}
 
       {/* Primary Top Header */}
       <header className="sticky top-0 z-30 border-b border-border/70 bg-card/95 backdrop-blur shadow-xs">
