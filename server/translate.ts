@@ -212,3 +212,28 @@ Return ONLY JSON: {"response": "...", "targetTab": "..."}`;
   }
   return null;
 }
+
+// Speech-to-text for the voice assistant's recording fallback.
+export async function transcribeAudio(
+  audioBase64: string,
+  mimeType: string,
+  lang: TranslateTarget
+): Promise<{ text: string } | { error: string; code: string }> {
+  const ai = getGenAI();
+  if (!ai) return { error: 'GEMINI_API_KEY is not configured on the server', code: 'no-ai' };
+  const prompt = `Transcribe this short voice question from an Indian farmer exactly as spoken. It is most likely in ${LANGUAGE_NAMES[lang]} (it may also be English, Hindi or Marathi). Write Marathi and Hindi in Devanagari script. Return only the transcribed words, nothing else. If nothing intelligible was said, return an empty string.`;
+  const models = [process.env.GEMINI_MODEL || 'gemini-2.5-flash', process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite'];
+  for (const model of models) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: prompt }, { inlineData: { mimeType, data: audioBase64 } }] }],
+        config: { temperature: 0 },
+      });
+      return { text: (res.text || '').trim().replace(/^"|"$/g, '') };
+    } catch (err) {
+      console.warn(`Gemini transcription with ${model} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return { error: 'Could not transcribe the recording', code: 'transcribe-failed' };
+}

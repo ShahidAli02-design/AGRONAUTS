@@ -5,11 +5,14 @@ import dotenv from 'dotenv';
 import { apiRouter } from './server/routes';
 import { liveRouter } from './server/live-routes';
 import { mandiRouter } from './server/mandi';
+import { initStore } from './server/store';
 
 // Load .env.local first (what the README tells you to create), then .env.
 dotenv.config({ path: ['.env.local', '.env'] });
 
 async function startServer() {
+  // Load accounts, batches and orders (from Postgres when DATABASE_URL is set).
+  await initStore();
   const app = express();
   // Hosts such as Render / Railway / Cloud Run tell us the port to use.
   const PORT = Number(process.env.PORT) || 3000;

@@ -20,3 +20,7 @@ services:
         sync: false
       - key: DATA_GOV_API_KEY
         sync: false
+      # Postgres connection string (free: neon.tech or supabase.com). Without
+      # it, accounts/batches/orders are lost whenever Render restarts.
+      - key: DATABASE_URL
+        sync: false

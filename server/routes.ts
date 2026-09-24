@@ -7,7 +7,7 @@ import {
   computeZeroWasteDecision
 } from './gemini';
 import { sendFarmerOrderNotification } from './notifications';
-import { answerVoiceQuery, isTranslateTarget, translateTexts } from './translate';
+import { answerVoiceQuery, isTranslateTarget, transcribeAudio, translateTexts } from './translate';
 import { adminMirrorMiddleware, applyAdminListingModeration, applyAdminUserStatus } from './live-routes';
 import { ProduceBatch, MarketplaceListing, Order } from './types';
 
@@ -312,6 +312,17 @@ const handleQualityGrading = async (req: Request, res: Response) => {
 };
 
 apiRouter.post('/ai/quality-grade', handleQualityGrading);
+
+// Voice recording -> text (fallback when the browser has no speech recognition).
+apiRouter.post('/voice/transcribe', async (req: Request, res: Response) => {
+  const { audio, mimeType, lang } = req.body || {};
+  if (typeof audio !== 'string' || !audio || audio.length > 8_000_000) {
+    return res.status(400).json({ success: false, code: 'bad-audio', error: 'Send a short base64 audio clip' });
+  }
+  const out = await transcribeAudio(audio, typeof mimeType === 'string' ? mimeType : 'audio/webm', isTranslateTarget(lang) ? lang : 'en');
+  if ('error' in out) return res.status(out.code === 'no-ai' ? 503 : 502).json({ success: false, ...out });
+  res.json({ success: true, text: out.text });
+});
 
 // Voice assistant answers (src/services/voice.ts falls back to local answers).
 apiRouter.post('/voice/ask', async (req: Request, res: Response) => {

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Router, Request, Response } from 'express';
+import { kvGet, kvSet } from './store';
 
 // Live mandi (APMC) prices for every state, district, market and commodity,
 // from the Government of India "Current Daily Price of Various Commodities
@@ -97,8 +98,19 @@ function readSnapshot(): Snapshot | null {
   try {
     return JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf8'));
   } catch {
-    return null;
+    return dbSnapshot;
   }
+}
+
+// The last good snapshot is also kept in Postgres (when configured) so it
+// survives Render restarts, which wipe the local data/ folder.
+let dbSnapshot: Snapshot | null = null;
+let dbSnapshotChecked = false;
+async function ensureDbSnapshot() {
+  if (dbSnapshotChecked) return;
+  dbSnapshotChecked = true;
+  const s = await kvGet<Snapshot>('mandi-snapshot');
+  if (s?.records?.length && !dbSnapshot) dbSnapshot = s;
 }
 
 class RateLimitError extends Error {
@@ -156,6 +168,8 @@ async function loadAll(): Promise<Snapshot> {
   try {
     fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
     fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snap));
+    dbSnapshot = snap;
+    kvSet('mandi-snapshot', snap);
   } catch {
     // snapshot is best-effort
   }
@@ -164,6 +178,7 @@ async function loadAll(): Promise<Snapshot> {
 
 
 async function getData(): Promise<{ snap: Snapshot | null; stale: boolean }> {
+  await ensureDbSnapshot();
   if (cache && Date.now() - cacheTime < TTL_MS) return { snap: cache, stale: false };
   const fallback = () => cache || readSnapshot();
   if (Date.now() < retryNotBefore) return { snap: fallback(), stale: true };

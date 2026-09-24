@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import pg from 'pg';
 import {
   DEFAULT_USERS,
   DEFAULT_PROFILE,
@@ -14,7 +15,11 @@ import {
 // admin) reads and writes the same rows through /api/db and /api/auth, so a
 // listing created on one phone shows up on everyone's marketplace, orders
 // reach the seller, and new sign-ups appear in the admin dashboard.
-// Rows are persisted to a JSON file so they survive server restarts.
+// Rows are persisted to a JSON file, and — when DATABASE_URL points at a
+// Postgres database (Neon, Supabase, Render Postgres…) — to Postgres too.
+// Free hosts such as Render wipe local files on every restart/redeploy and
+// when an idle free instance sleeps, so Postgres is what keeps accounts,
+// batches and orders permanently.
 
 export type Row = Record<string, any>;
 
@@ -87,6 +92,103 @@ function persist() {
   }, 200);
 }
 
+// ---------------------------------------------------------------------------
+// Postgres persistence (optional, enabled by DATABASE_URL)
+// ---------------------------------------------------------------------------
+
+let pool: pg.Pool | null = null;
+type PendingWrite = { kind: 'upsert'; table: string; rows: Row[] } | { kind: 'delete'; table: string; ids: string[] };
+const writeQueue: PendingWrite[] = [];
+let flushing = false;
+
+function sslFor(url: string) {
+  if (/sslmode=disable/.test(url) || /@(localhost|127\.0\.0\.1)[:/]/.test(url)) return undefined;
+  return { rejectUnauthorized: false };
+}
+
+export function usingPostgres() {
+  return pool !== null;
+}
+
+async function upsertRows(client: pg.Pool, table: string, rows: Row[]) {
+  for (const row of rows) {
+    await client.query(
+      `INSERT INTO agronauts_rows (tbl, id, data, updated_at) VALUES ($1, $2, $3, now())
+       ON CONFLICT (tbl, id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [table, String(row.id), JSON.stringify(row)]
+    );
+  }
+}
+
+async function flushWrites() {
+  if (flushing || !pool) return;
+  flushing = true;
+  try {
+    while (writeQueue.length) {
+      const job = writeQueue[0];
+      try {
+        if (job.kind === 'upsert') await upsertRows(pool, job.table, job.rows);
+        else await pool.query('DELETE FROM agronauts_rows WHERE tbl = $1 AND id = ANY($2)', [job.table, job.ids]);
+        writeQueue.shift();
+      } catch (err) {
+        console.error('Postgres write failed, retrying in 5s:', err instanceof Error ? err.message : err);
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+  } finally {
+    flushing = false;
+  }
+}
+
+function queueWrite(job: PendingWrite) {
+  if (!pool) return;
+  writeQueue.push(job);
+  void flushWrites();
+}
+
+// Small key/value values (e.g. the last mandi price snapshot) in the same table.
+export async function kvGet<T>(key: string): Promise<T | null> {
+  if (!pool) return null;
+  try {
+    const r = await pool.query("SELECT data FROM agronauts_rows WHERE tbl = '_kv' AND id = $1", [key]);
+    return (r.rows[0]?.data?.value as T) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function kvSet(key: string, value: unknown) {
+  queueWrite({ kind: 'upsert', table: '_kv', rows: [{ id: key, value }] });
+}
+
+// Call once before the server starts listening.
+export async function initStore() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    console.log('Database: local file (set DATABASE_URL to a Postgres database to keep data across restarts).');
+    return;
+  }
+  pool = new pg.Pool({ connectionString: url, ssl: sslFor(url), max: 4 });
+  await pool.query(`CREATE TABLE IF NOT EXISTS agronauts_rows (
+    tbl text NOT NULL,
+    id text NOT NULL,
+    data jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (tbl, id)
+  )`);
+  const { rows } = await pool.query("SELECT tbl, data FROM agronauts_rows WHERE tbl <> '_kv'");
+  if (rows.length) {
+    for (const t of TABLES) data[t] = [];
+    for (const r of rows) if (isTable(r.tbl)) data[r.tbl].push(r.data);
+    for (const t of TABLES) data[t].sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+    console.log(`Database: Postgres (${rows.length} rows loaded).`);
+  } else {
+    // First run on a fresh database: copy the current data (file or seed) in.
+    for (const t of TABLES) if (data[t].length) await upsertRows(pool, t, data[t]);
+    console.log('Database: Postgres (initialised with starting data).');
+  }
+}
+
 export function getRevision() {
   return revision;
 }
@@ -137,6 +239,7 @@ export function insert(name: TableName, records: Row[]): Row[] {
   });
   data[name].unshift(...created);
   persist();
+  queueWrite({ kind: 'upsert', table: name, rows: created });
   return created;
 }
 
@@ -148,14 +251,20 @@ export function update(name: TableName, filters: Filter[], patch: Row): Row[] {
     updated.push(next);
     return next;
   });
-  if (updated.length) persist();
+  if (updated.length) {
+    persist();
+    queueWrite({ kind: 'upsert', table: name, rows: updated });
+  }
   return updated;
 }
 
 export function remove(name: TableName, filters: Filter[]): Row[] {
   const removed = data[name].filter((r) => matches(r, filters));
   data[name] = data[name].filter((r) => !matches(r, filters));
-  if (removed.length) persist();
+  if (removed.length) {
+    persist();
+    queueWrite({ kind: 'delete', table: name, ids: removed.map((r) => String(r.id)) });
+  }
   return removed;
 }
 

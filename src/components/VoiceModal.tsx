@@ -44,6 +44,9 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
   const [textQuery, setTextQuery] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [thinking, setThinking] = useState(false);
+  // 'browser' = the browser's own speech recognition, 'recording' = our
+  // record-and-transcribe fallback, 'transcribing' = waiting for the server.
+  const [micMode, setMicMode] = useState<'idle' | 'browser' | 'recording' | 'transcribing'>('idle');
   const t = translations[lang];
   const streamedResponse = useStreamedText(response?.response);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -53,8 +56,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
       setErrorMsg('');
       setResponse(null);
       setTranscript('');
-      handleStartListening();
+      // The mic starts on a tap (Safari/iPhone and some Chrome setups block
+      // the microphone unless it is started from a user tap).
     } else {
+      VoiceAssistant.stopRecording();
+      setMicMode('idle');
       VoiceAssistant.stopListening();
       VoiceAssistant.stopSpeaking();
       setIsListening(false);
@@ -64,29 +70,73 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleStartListening = () => {
+  // Errors from the browser's recognizer that mean "this browser/network
+  // can't do it" — switch to recording + server transcription instead.
+  const FALLBACK_ERRORS = ['not-supported', 'network', 'service-not-allowed', 'language-not-supported', 'start-failed'];
+
+  const startRecordingFallback = () => {
     setErrorMsg('');
     setIsListening(true);
+    setMicMode('recording');
+    void VoiceAssistant.startRecording(
+      lang,
+      (text) => {
+        setIsListening(false);
+        setMicMode('idle');
+        void runQuery(text);
+      },
+      (err) => {
+        setIsListening(false);
+        setMicMode('idle');
+        setErrorMsg(friendlyMicError(err));
+      },
+      () => setMicMode('transcribing')
+    );
+  };
+
+  const handleStartListening = () => {
+    setErrorMsg('');
+    if (!VoiceAssistant.isSupported()) {
+      startRecordingFallback();
+      return;
+    }
+    setIsListening(true);
+    setMicMode('browser');
     VoiceAssistant.startListening(
       lang,
       (text: string) => {
         setIsListening(false);
+        setMicMode('idle');
         void runQuery(text);
       },
       (err: any) => {
+        const code = typeof err === 'string' ? err : '';
+        if (FALLBACK_ERRORS.includes(code) && VoiceAssistant.canRecord()) {
+          startRecordingFallback();
+          return;
+        }
         setIsListening(false);
-        setErrorMsg(friendlyMicError(typeof err === 'string' ? err : ''));
+        setMicMode('idle');
+        setErrorMsg(friendlyMicError(code));
       },
       () => {
         setIsListening(false);
+        setMicMode('idle');
         setErrorMsg(friendlyMicError('no-speech'));
       }
     );
   };
 
   const handleStopListening = () => {
+    if (micMode === 'recording') {
+      // Stop and transcribe what was said so far.
+      VoiceAssistant.stopRecording();
+      setIsListening(false);
+      return;
+    }
     VoiceAssistant.stopListening();
     setIsListening(false);
+    setMicMode('idle');
   };
 
   const runQuery = async (query: string) => {
@@ -98,6 +148,7 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
     setResponse(null);
     setThinking(true);
     const res = await VoiceAssistant.ask(query, lang);
+    setMicMode('idle');
     setThinking(false);
     setResponse(res);
     VoiceAssistant.speak(res.response, lang);
@@ -124,6 +175,20 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
         : lang === 'hi'
         ? 'आवाज़ पहचानने के लिए इंटरनेट चाहिए। कनेक्शन जांचें या टाइप करें।'
         : 'Voice recognition needs an internet connection — check it, or type below.';
+    }
+    if (raw === 'no-ai') {
+      return lang === 'mr'
+        ? 'हा ब्राउझर आवाज ओळखत नाही आणि सर्व्हरवर GEMINI_API_KEY नाही. Chrome/Edge वापरा किंवा टाइप करा. (no-ai)'
+        : lang === 'hi'
+        ? 'यह ब्राउज़र आवाज़ नहीं पहचानता और सर्वर पर GEMINI_API_KEY नहीं है। Chrome/Edge इस्तेमाल करें या टाइप करें। (no-ai)'
+        : "This browser can't recognise speech and the server has no GEMINI_API_KEY for transcription. Use Chrome/Edge or type below. (no-ai)";
+    }
+    if (raw === 'audio-capture') {
+      return lang === 'mr'
+        ? 'मायक्रोफोन सापडला नाही. मायक्रोफोन जोडलेला आहे का ते तपासा. (audio-capture)'
+        : lang === 'hi'
+        ? 'माइक्रोफ़ोन नहीं मिला। जांचें कि माइक्रोफ़ोन जुड़ा है। (audio-capture)'
+        : 'No microphone found — check that a microphone is connected. (audio-capture)';
     }
     if (raw === 'no-speech') {
       return lang === 'mr'
@@ -214,7 +279,11 @@ export const VoiceModal: React.FC<VoiceModalProps> = ({
               </div>
               <div>
                 <p className="text-sm font-medium text-neutral-800">
-                  {isListening
+                  {micMode === 'transcribing'
+                    ? (lang === 'mr' ? 'आवाज समजून घेत आहे...' : lang === 'hi' ? 'आवाज़ समझ रहा हूँ...' : 'Understanding your voice...')
+                    : micMode === 'recording'
+                    ? (lang === 'mr' ? 'बोला... संपल्यावर माइक दाबा' : lang === 'hi' ? 'बोलिए... खत्म होने पर माइक दबाएँ' : 'Speak now... tap the mic when done')
+                    : isListening
                     ? (lang === 'mr' ? 'ऐकत आहे...' : lang === 'hi' ? 'सुन रहा हूँ...' : 'Listening...')
                     : (lang === 'mr' ? 'बोलण्यासाठी टॅप करा किंवा खाली टाइप करा' : lang === 'hi' ? 'बोलने के लिए टैप करें या नीचे टाइप करें' : 'Tap to speak, or type below')}
                 </p>

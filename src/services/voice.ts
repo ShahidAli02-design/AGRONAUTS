@@ -183,6 +183,79 @@ export class VoiceAssistant {
     }
   }
 
+  // ---- Fallback: record audio and let the server (Gemini) transcribe it ----
+  // Used when the browser has no speech recognition (Firefox, Brave, many
+  // in-app browsers) or its recognition service fails.
+  private static recorder: MediaRecorder | null = null;
+  private static recordTimer: number | undefined;
+
+  public static canRecord(): boolean {
+    return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined';
+  }
+
+  public static async startRecording(
+    lang: Language,
+    onText: (text: string) => void,
+    onError: (err: string) => void,
+    onTranscribing?: () => void,
+    maxMs = 8000
+  ) {
+    if (!this.canRecord()) {
+      onError('not-supported');
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e: any) {
+      onError(e?.name === 'NotAllowedError' ? 'not-allowed' : 'audio-capture');
+      return;
+    }
+    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => MediaRecorder.isTypeSupported?.(m)) || '';
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      window.clearTimeout(this.recordTimer);
+      this.recorder = null;
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      if (blob.size < 1500) {
+        onError('no-speech');
+        return;
+      }
+      onTranscribing?.();
+      try {
+        const audio = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(String(r.result).split(',')[1] || '');
+          r.onerror = () => reject(r.error);
+          r.readAsDataURL(blob);
+        });
+        const res = await fetch('/api/voice/transcribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ audio, mimeType: blob.type.split(';')[0], lang }),
+        });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.success || !json.text?.trim()) {
+          onError(json?.code || 'transcribe-failed');
+          return;
+        }
+        onText(json.text.trim());
+      } catch {
+        onError('network');
+      }
+    };
+    this.recorder = recorder;
+    recorder.start();
+    this.recordTimer = window.setTimeout(() => this.stopRecording(), maxMs);
+  }
+
+  public static stopRecording() {
+    if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
+  }
+
   public static stopSpeaking() {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   }
